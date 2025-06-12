@@ -3,8 +3,12 @@
   "build": {
 	  "dockerfile": "Dockerfile"
 	},
+  "mounts": [
+        "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,consistency=cached"
+    ],
   "forwardPorts": [3000, 3001],
-  "postCreateCommand": "sudo chown -R node:node /workspaces/ft_transcendence/src /workspaces/ft_transcendence/public || true && npm init -y && npm install",
+  "postCreateCommand": "sudo chown -R node:node /workspaces/ft_transcendence && npm init -y && npm install",
   "remoteUser": "node",
   "updateRemoteUserUID": false
 }
