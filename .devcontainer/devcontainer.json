@@ -1,0 +1,10 @@
+{
+  "name": "ft_transcendence",
+  "build": {
+	  "dockerfile": "Dockerfile"
+	},
+  "forwardPorts": [3000, 3001],
+  "postCreateCommand": "sudo chown -R node:node /workspaces/ft_transcendence && npm init -y && npm install",
+  "remoteUser": "node",
+  "updateRemoteUserUID": false
+}
