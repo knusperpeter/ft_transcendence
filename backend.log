@@ -1,0 +1,15 @@
+
+> ft_transcendence@1.0.0 dev:backend
+> node backend/app.js
+
+🔒 SSL enabled
+[32m[INFO][0m logging setup :)
+[36m[DEBUG][0m [WebsocketController constructor]
+[36m[DEBUG][0m [WebsocketService constructor]
+[36m[DEBUG][0m [MatchMakingService constructor]
+[36m[DEBUG][0m [EmojiService constructor]
+[36m[DEBUG][0m [RoomService constructor]
+[36m[DEBUG][0m [InvitationService constructor]
+[32m[INFO][0m 🚀 Server running on https://localhost:3443
+[32m[INFO][0m 🔐 HTTPS enabled with self-signed certificate
+[32m[INFO][0m ⚠️  Browsers will show security warnings for development certificates
