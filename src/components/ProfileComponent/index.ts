@@ -10,6 +10,7 @@ interface ProfileComponentState {
   truncatedEmail: string;
   bio: string;
   profilePictureUrl: string;
+  isCustomAvatar: boolean;
   isLoading: boolean;
   showError: boolean;
   errorMessage: string | null;
@@ -22,6 +23,7 @@ export class ProfileComponent extends Component<ProfileComponentState> {
     truncatedEmail: 'Unknown',
     bio: 'No bio available',
     profilePictureUrl: 'profile_no.svg',
+    isCustomAvatar: false,
     isLoading: true,
     showError: false,
     errorMessage: null
@@ -54,10 +56,12 @@ export class ProfileComponent extends Component<ProfileComponentState> {
     if (!this.hasLoadedData || this.state.isLoading) {
       console.log('ProfileComponent: Loading profile data');
       this.loadProfileData();
-    } else {
+    }  else {
       console.log('ProfileComponent: Skipping data load, already loaded');
     }
     this.setupEventListeners();
+    // Ensure correct fit mode on mount
+    this.updateProfileImageFit();
   }
 
   protected onUnmount(): void {
@@ -81,9 +85,7 @@ export class ProfileComponent extends Component<ProfileComponentState> {
 
   private setupEventListeners(): void {
     this.addEventListener("button", "click", () => {
-      console.log('Settings button clicked!');
       const router = Router.getInstance();
-      console.log('Router instance:', router);
       router.navigate('/user/settings');
     });
 
@@ -98,7 +100,6 @@ export class ProfileComponent extends Component<ProfileComponentState> {
 
     // Add click handler for profile picture
     this.addEventListener("#profile-picture", "click", () => {
-      console.log('Profile picture clicked!');
       this.showPictureSelector();
     });
 
@@ -113,6 +114,11 @@ export class ProfileComponent extends Component<ProfileComponentState> {
     // Close button for picture selector
     this.addEventListener("#profile-selector-close", "click", () => {
       this.hidePictureSelector();
+    });
+
+    // File input change handler
+    this.addEventListener("#avatar-file-input", "change", (e) => {
+      this.handleFileSelect(e);
     });
   }
 
@@ -138,8 +144,6 @@ export class ProfileComponent extends Component<ProfileComponentState> {
 
   private async selectProfilePicture(pictureName: string): Promise<void> {
     try {
-      console.log('Selecting profile picture:', pictureName);
-      
       // Get current profile data
       const response = await authService.authenticatedFetch(getApiUrl('/profiles/me'));
       if (!response.ok) {
@@ -158,15 +162,89 @@ export class ProfileComponent extends Component<ProfileComponentState> {
       });
       
       if (updateResponse.ok) {
-        console.log('Profile picture updated successfully');
-        this.setState({ profilePictureUrl: pictureName });
+        this.setState({ 
+          profilePictureUrl: `/art/profile/${pictureName}`,
+          isCustomAvatar: false
+        });
         this.hidePictureSelector();
+        this.updateProfileImageFit();
       } else {
         const errorData = await updateResponse.json();
         console.error('Failed to update profile picture:', errorData);
       }
     } catch (error) {
       console.error('Error updating profile picture:', error);
+    }
+  }
+
+  private async uploadCustomAvatar(file: File): Promise<void> {
+    try {
+      // Get current profile data
+      const response = await authService.authenticatedFetch(getApiUrl('/profiles/me'));
+      if (!response.ok) {
+        throw new Error('Failed to get profile data');
+      }
+      
+      const profileData = await response.json();
+      
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Upload the file
+      const uploadResponse = await authService.authenticatedFetch(getApiUrl(`/profiles/${profileData.id}/avatar`), {
+        method: 'POST',
+        body: formData,
+        // Don't set Content-Type header - let the browser set it with boundary
+      });
+      
+      if (uploadResponse.ok) {
+        const result = await uploadResponse.json();
+        
+        // Update the profile picture URL and mark as custom avatar
+        this.setState({ 
+          profilePictureUrl: result.avatarUrl,
+          isCustomAvatar: true
+        });
+        this.hidePictureSelector();
+        this.updateProfileImageFit();
+        
+        // Force reload profile data to ensure consistency
+        this.hasLoadedData = false;
+        this.loadProfileData();
+      } else {
+        const errorData = await uploadResponse.json();
+        console.error('Failed to upload avatar:', errorData);
+        this.showError(`Upload failed: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      this.showError('Upload failed. Please try again.');
+    }
+  }
+
+
+
+  private handleFileSelect(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        this.showError('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+        return;
+      }
+      
+      // Validate file size (10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        this.showError('File size must be less than 10MB');
+        return;
+      }
+      
+      // Upload the file
+      this.uploadCustomAvatar(file);
     }
   }
 
@@ -177,29 +255,29 @@ export class ProfileComponent extends Component<ProfileComponentState> {
       const email = currentUser?.email || 'Unknown';
       const truncatedEmail = this.truncateEmail(email);
       
+      // Log the current user and auth token
       console.log('ProfileComponent: Current user:', currentUser);
       console.log('ProfileComponent: Auth token exists:', !!authService.getToken());
-
+      
       // Get profile data from API
       const response = await authService.authenticatedFetch(getApiUrl('/profiles/me'));
       
-      console.log('ProfileComponent: Response status:', response.status);
-      
       if (!response.ok) {
         console.error('ProfileComponent: Profile fetch failed with status:', response.status);
-        if (response.status === 401) {
-          // Token expired, redirect to login
-          this.showError('Your session has expired. Please log in again.');
-          const { Router } = await import('@blitz-ts/router');
-          Router.getInstance().navigate('/');
-          return;
-        }
-              this.setState({
+      if (response.status === 401) {
+        // Token expired, redirect to login
+        this.showError('Your session has expired. Please log in again.');
+        const { Router } = await import('@blitz-ts/router');
+        Router.getInstance().navigate('/');
+        return;
+      }
+            this.setState({
         nickname: 'Unknown',
         email: email,
         truncatedEmail: truncatedEmail,
         bio: 'No bio available',
         profilePictureUrl: 'profile_no.svg',
+        isCustomAvatar: false,
         isLoading: false,
         error: null
       });
@@ -210,29 +288,19 @@ export class ProfileComponent extends Component<ProfileComponentState> {
 
       const profileData = await response.json();
       
-      // Extract just the filename from the full URL for display
-      let profilePictureUrl = 'profile_no.svg';
+      // Process profile picture URL
+      let profilePictureUrl = '/art/profile/profile_no.svg';
+      let isCustomAvatar = false;
+      
       if (profileData.profilePictureUrl) {
-        console.log('ProfileComponent: Processing profilePictureUrl:', profileData.profilePictureUrl);
-        if (profileData.profilePictureUrl.startsWith('http://') || 
-            profileData.profilePictureUrl.startsWith('https://') ||
-            profileData.profilePictureUrl.startsWith('javascript:') ||
-            profileData.profilePictureUrl.startsWith('data:') ||
-            profileData.profilePictureUrl.includes('<') ||
-            profileData.profilePictureUrl.includes('>')) {
-          // External URL or dangerous content - use default profile picture
-          console.log('ProfileComponent: External URL or dangerous content detected, using default profile picture');
-          profilePictureUrl = 'profile_no.svg';
+        if (profileData.profilePictureUrl.startsWith('http://') || profileData.profilePictureUrl.startsWith('https://')) {
+          // External URL - use default profile picture
+          profilePictureUrl = '/art/profile/profile_no.svg';
+        } else if (profileData.profilePictureUrl.startsWith('/uploads/')) {
+          profilePictureUrl = profileData.profilePictureUrl;
+          isCustomAvatar = true;
         } else {
-          const urlParts = profileData.profilePictureUrl.split('/');
-          const filename = urlParts[urlParts.length - 1];
-          // Only allow safe filename characters
-          if (/^[a-zA-Z0-9_.-]+\.(svg|png|jpg|jpeg|gif)$/.test(filename)) {
-            profilePictureUrl = filename;
-          } else {
-            profilePictureUrl = 'profile_no.svg';
-          }
-          console.log('ProfileComponent: Using local filename:', profilePictureUrl);
+          profilePictureUrl = `/art/profile/${profileData.profilePictureUrl}`;
         }
       }
       
@@ -242,11 +310,13 @@ export class ProfileComponent extends Component<ProfileComponentState> {
         truncatedEmail: truncatedEmail,
         bio: profileData.bio && profileData.bio.trim() !== '' ? profileData.bio : 'No bio available',
         profilePictureUrl: profilePictureUrl,
+        isCustomAvatar: isCustomAvatar,
         isLoading: false,
         error: null
       });
       
       this.hasLoadedData = true; // Mark that we've loaded the data
+      this.updateProfileImageFit();
 
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -266,12 +336,30 @@ export class ProfileComponent extends Component<ProfileComponentState> {
         truncatedEmail: truncatedEmail,
         bio: 'No bio available',
         profilePictureUrl: 'profile_no.svg',
+        isCustomAvatar: false,
         isLoading: false,
         error: null
       });
       
       this.hasLoadedData = true; // Mark that we've loaded the data even in error case
     }
+  }
+  
+  private updateProfileImageFit(): void {
+    try {
+      const img = this.element.querySelector('#profile-picture') as HTMLElement | null;
+      if (!img) return;
+      // Toggle object-fit class based on whether avatar is custom/uploaded
+      // Uploaded/custom => allow cover (can crop). Default/built-in => contain (no crop)
+      const classList = img.classList;
+      if (this.state.isCustomAvatar) {
+        classList.remove('object-contain');
+        if (!classList.contains('object-cover')) classList.add('object-cover');
+      } else {
+        classList.remove('object-cover');
+        if (!classList.contains('object-contain')) classList.add('object-contain');
+      }
+    } catch {}
   }
     
   render() {}

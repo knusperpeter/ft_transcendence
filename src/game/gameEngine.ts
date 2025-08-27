@@ -45,6 +45,8 @@ export class GameEngine {
 
 	public _ws = WebSocketService.getInstance();
 	private _intervalId?: NodeJS.Timeout;
+	private _beforeUnloadHandler?: (e: BeforeUnloadEvent) => void;
+	private _pageHideHandler?: (e: Event) => void;
 
 	constructor(canvasID: string) {
 		this._canvas = document.getElementById(canvasID) as HTMLCanvasElement;
@@ -122,7 +124,14 @@ export class GameEngine {
 	}
 	
 	private singleGameHandler(mode: GameMode, oppMode: OpponentMode): void {
-		if (oppMode == OpponentMode.SINGLE && this._p1ID && this._p2ID) {
+		if (mode == GameMode.TEAMS && this._p1ID && this._p2ID && this._p3ID && this._p4ID) {
+			var playerOne: Player = new Player(this._p1Nick ?? 'player1', 0, false, this._p1ID);
+			var playerTwo: Player = new Player(this._p2Nick ?? 'player2', 0, false, this._p2ID);
+			var playerThree: Player = new Player(this._p3Nick ?? 'player3', 0, false, this._p3ID);
+			var playerFour: Player = new Player(this._p4Nick ?? 'player4', 0, false, this._p4ID);
+			this._pongGame = new PongGame(this, mode, oppMode, playerOne, playerTwo, playerThree, playerFour);
+		}
+		else if (oppMode == OpponentMode.SINGLE && this._p1ID && this._p2ID) {
 			var playerOne: Player = new Player(this._p1Nick ?? 'player', 0, false, this._p1ID);
 			var playerTwo: Player = new Player(this._p2Nick ?? 'bot', 0, true, this._p2ID);
 			this._pongGame = new PongGame(this, mode, oppMode, playerOne, playerTwo);
@@ -171,6 +180,17 @@ export class GameEngine {
 
 	private cleanup(): void {
 		this.removeAllEventListeners();
+		// Detach page lifecycle handlers
+		try {
+			if (this._beforeUnloadHandler) {
+				window.removeEventListener('beforeunload', this._beforeUnloadHandler as any, { capture: true } as any);
+				(this as any)._beforeUnloadHandler = undefined;
+			}
+			if (this._pageHideHandler) {
+				window.removeEventListener('pagehide', this._pageHideHandler as any, { capture: true } as any);
+				(this as any)._pageHideHandler = undefined;
+			}
+		} catch {}
 		if (this._canvas) {
 			if (this._ctx) {
 				this._ctx.clearRect(0,0, this._canvas.width, this._canvas.height);
@@ -200,6 +220,35 @@ export class GameEngine {
 		
 		this.parseMessage(msg);
 
+		// Attach unload confirmation and cancel behavior only while game is active
+		try {
+			this._beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+				// Suggest leaving; don't send cancel here (user may cancel the dialog)
+				// Update URL so the next load lands on /user instead of /user/game
+				try { history.replaceState(null, '', '/user'); } catch {}
+				try { localStorage.setItem('navigate_to_user', '1'); } catch {}
+				e.preventDefault();
+				e.returnValue = '';
+				return '';
+			};
+			window.addEventListener('beforeunload', this._beforeUnloadHandler, { capture: true });
+			this._pageHideHandler = () => {
+				try {
+					// Avoid sending cancel for local games (no real backend room)
+					const isLocalRoom = !this._roomID || String(this._roomID) === 'local';
+					if (this._roomID && !isLocalRoom) {
+						const cancelMsg = { type: 5, roomId: this._roomID, status: 'cancel' };
+						this._ws.sendMessage(JSON.stringify(cancelMsg));
+						// Mark for forced cancel on next WS reconnect in case the ws is already closed
+						try { localStorage.setItem('force_cancel_room_id', String(this._roomID)); } catch {}
+						// After sending cancel, switch route to /user via SPA if available
+						try { history.replaceState(null, '', '/user'); } catch {}
+					}
+				} catch {}
+			};
+			window.addEventListener('pagehide', this._pageHideHandler, { capture: true });
+		} catch {}
+
 		switch (this._oppModeStr) {
 			case 'single':
 				this._oppMode = OpponentMode.SINGLE;
@@ -224,6 +273,9 @@ export class GameEngine {
 				break;
 			case 'tournament':
 				this._gameMode = GameMode.TOURNAMENT;
+				break;
+			case 'teams':
+				this._gameMode = GameMode.TEAMS;
 				break;
 			default:
 				console.error('Invalid game mode:', this._gameModeStr, " defaulting to mode select");
