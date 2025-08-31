@@ -241,11 +241,6 @@ class AuthController {
   static async logout(request, reply) {
     try {
       const config = getAuthConfig();
-      // Attempt to revoke session in DB if user info is available
-      if (request.user && request.user.userId && request.user.sessionId) {
-        await SessionService.endSessionById(request.user.userId, request.user.sessionId);
-        log(`Session destroyed for user ${request.user.userId} session ${request.user.sessionId}`, INFO);
-      }
       reply.clearCookie(config.SESSION.COOKIE_NAME, { 
         path: '/', 
         httpOnly: true, 

@@ -6,9 +6,6 @@ import { getAuthConfig } from '../config/auth.config.js';
 // SQLite-backed single-session manager (Option A)
 // user_sessions table defined in database initialization
 class SessionService {
-  static async endSessionById(userId, sessionId) {
-    await dbRun('DELETE FROM user_sessions WHERE userId = ? AND sessionId = ?', [userId, sessionId]);
-  }
   // Cache detection of legacy tokenHash column
   static _checkedSchema = false;
   static _hasTokenHash = false;
@@ -39,7 +36,7 @@ class SessionService {
       } else {
         await dbRun('INSERT OR REPLACE INTO user_sessions (userId, sessionId, createdAt, lastSeenAt, revoked) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)', [userId, sessionId]);
       }
-      log(`[SessionService] startSession user=${userId} sessionId=${sessionId}`, DEBUG);
+      // log(`[SessionService] startSession user=${userId} sessionId=${sessionId}`, DEBUG);
     } catch (e) {
       log(`[SessionService.startSession] DB error: ${e.message}`, WARN);
       throw e;
