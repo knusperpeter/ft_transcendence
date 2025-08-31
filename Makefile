@@ -14,36 +14,50 @@ welcome-message:
 
 invite-message:
 	@IP=$$(ip -4 addr show scope global | grep inet | awk '{print $$2}' | cut -d/ -f1 | head -n1); \
-	echo "🌐 $(CYAN)Share this link with your friends:$(RESET) http://$${IP}:5173"
+	echo "🌐 $(CYAN)Share this link with your friends:$(RESET) https://$${IP}"
 
 # ## START UP commands
 
-start-up-elk:
+start-up-elk: check_env down-elk
 	@echo "$(CYAN)📋 LET'S MAKE ELK UP 📈$(RESET)"
 	$(MAKE) -f Makefile.elk config-devops
 	$(MAKE) -f Makefile.elk setup-log-dir
 	$(MAKE) -f Makefile.elk elk-up
 	$(MAKE) -f Makefile.elk set-lifecycle
+	@echo "$(GREEN)ELK has started up, have fun with all these logs!$(RESET)"
 
-start-up-app: setup-db check_env setup-certs invite-message
+build-up-elk: check_env down-elk
+	@echo "$(CYAN)📋 LET'S MAKE ELK UP 📈$(RESET)"
+	$(MAKE) -f Makefile.elk config-devops
+	$(MAKE) -f Makefile.elk setup-log-dir
+	$(MAKE) -f Makefile.elk elk-up-build
+	$(MAKE) -f Makefile.elk set-lifecycle
+	@echo "$(GREEN)ELK has started up, have fun with all these logs!$(RESET)"
+
+start-up-app: down-app setup-db check_env setup-certs invite-message
 	@echo "$(CYAN)🚀 LET'S MAKE APP UP 🚀$(RESET)"
 	@echo "$(YELLOW)🏗  spinning up container...$(RESET)"
-	@docker compose up app --build -d > docker_build.log 2>&1
-	@echo "$(GREEN)App has started up, have fun!$(RESET)"
+	@sudo mkdir -p /var/log/ft_transcendence/logs_backend
+	@sudo mkdir -p /var/log/ft_transcendence/logs_es
+	@docker compose up app nginx --build -d > docker_build.log 2>&1
+	@echo "$(GREEN)App has started up, let's get ponging!$(RESET)"
 
 restart-app:
-	@docker compose down app && docker compose up app -d
+	@docker compose down app nginx && docker compose up app nginx -d
 
 
 # ## down commands
 down-elk:
 	@$(MAKE) -f Makefile.elk elk-down
+	@echo "$(GREEN)ELK was turned off!$(RESET)"
 
 down-app:
-	@docker compose down app
+	@docker compose down app nginx
+	@echo "$(GREEN)App was turned off!$(RESET)"
 
 down:
 	@docker compose down
+	@echo "$(GREEN)Entire project was turned off!$(RESET)"
 
 # show logs
 logs-app:
@@ -59,11 +73,18 @@ rm-db:
 	@echo "$(MAGENTA)🧼 remove database$(RESET)"
 	@rm -f db.sqlite
 
+re-db: rm-db setup-db
+	@echo "$(GREEN)Database was restarted.$(RESET)"
+
+
 check_env:
 	@if [ ! -f ".env" ]; then \
 		echo "$(RED) ERROR: .env doesn't exist$(RESET)"; \
 		exit 1; \
 	fi
+
+# ls -la /var/log/ft_transcendence/logs_backend
+# rm -rf /var/log/ft_transcendence/logs_backend/*
 
 
 ## certificates
@@ -77,17 +98,19 @@ setup-certs:
 rm-certs:
 	@echo "$(MAGENTA)🧼 remove certs$(RESET)"
 	@rm -rf backend/ssl/server.*
+	@rm -rf backend/ssl/ca.*
 
 
 
-clean: rm-certs rm-db
+clean: rm-certs
 	@rm -f docker_build.log
 	@docker compose down
 
-fclean: clean
+fclean: clean rm-db
 	@docker compose down -v
 	@echo "$(MAGENTA)Full clean-up done.$(RESET)"
 
 # npm run dev:both
 
-.PHONY: re clean fclean up
+.PHONY: all welcome-message invite-message start-up-elk build-up-elk start-up-app restart-app down-elk down-app down \
+logs-app setup-db rm-db re-db check_env setup-certs rm-certs clean fclean

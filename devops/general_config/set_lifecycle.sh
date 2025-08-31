@@ -5,7 +5,7 @@ set -a
 source .env
 set +a
 
-sudo curl -k -u elastic:"$ELASTIC_PASSWORD" \
+sudo curl -u elastic:"$ELASTIC_PASSWORD" \
 	--cacert $CA_CERT_PATH/ca.crt \
 	-X PUT "https://localhost:9200/_index_template/my_logstash_template" \
 	-H "Content-Type: application/json" \
